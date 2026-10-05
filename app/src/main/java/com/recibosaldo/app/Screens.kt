@@ -4,7 +4,10 @@ package com.recibosaldo.app
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.graphics.BitmapFactory
 import android.net.Uri
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
@@ -58,6 +61,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -207,6 +212,7 @@ fun HomeScreen(vm: ReciboViewModel) {
         if (days.isEmpty()) {
             Text(stringResource(R.string.empty_days), color = Ink, modifier = Modifier.padding(8.dp))
         } else {
+            Text(stringResource(R.string.tap_day), color = Ink, modifier = Modifier.padding(bottom = 8.dp))
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(days, key = { it.day.toString() }) { row ->
                     DayRow(row, vm)
@@ -218,32 +224,90 @@ fun HomeScreen(vm: ReciboViewModel) {
 
 @Composable
 private fun DayRow(row: DayRow, vm: ReciboViewModel) {
+    var open by remember { mutableStateOf(false) }
+    var editing by remember { mutableStateOf<Movement?>(null) }
+    var viewing by remember { mutableStateOf<String?>(null) }
+    val movements = vm.movementsOn(row.day)
     Card(colors = CardDefaults.cardColors(containerColor = CardBg), shape = RoundedCornerShape(14.dp)) {
-        Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.clickable { open = !open }.padding(14.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    row.day.format(DateTimeFormatter.ofPattern("dd/MM/yyyy")),
+                    modifier = Modifier.weight(1f),
+                    fontWeight = FontWeight.SemiBold,
+                    color = Ink
+                )
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(
+                        "${stringResource(R.string.received)}: ${vm.money(row.income)}",
+                        color = IncomeGreen,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Text(
+                        "${stringResource(R.string.spent)}: ${vm.money(row.expense)}",
+                        color = ExpenseRed,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Text(
+                        "${stringResource(R.string.net)}: ${vm.signed(row.income - row.expense)}",
+                        fontWeight = FontWeight.Bold,
+                        color = Ink
+                    )
+                }
+            }
+            if (open) {
+                Spacer(Modifier.height(10.dp))
+                movements.forEach { movement ->
+                    MovementLine(movement, vm, onEdit = { editing = movement }, onView = { viewing = movement.imagePath })
+                }
+            }
+        }
+    }
+    editing?.let { movement ->
+        EditMovementDialog(
+            movement = movement,
+            onDismiss = { editing = null },
+            onSave = {
+                vm.update(it)
+                editing = null
+            },
+            onDelete = {
+                vm.delete(movement.id)
+                editing = null
+            }
+        )
+    }
+    viewing?.let { path ->
+        TicketDialog(path) { viewing = null }
+    }
+}
+
+@Composable
+private fun MovementLine(
+    movement: Movement,
+    vm: ReciboViewModel,
+    onEdit: () -> Unit,
+    onView: () -> Unit
+) {
+    Row(
+        Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(Modifier.weight(1f)) {
             Text(
-                row.day.format(DateTimeFormatter.ofPattern("dd/MM/yyyy")),
-                modifier = Modifier.weight(1f),
+                movement.merchant.ifBlank { stringResource(R.string.no_company) },
                 fontWeight = FontWeight.SemiBold,
                 color = Ink
             )
-            Column(horizontalAlignment = Alignment.End) {
-                Text(
-                    "${stringResource(R.string.received)}: ${vm.money(row.income)}",
-                    color = IncomeGreen,
-                    style = MaterialTheme.typography.bodySmall
-                )
-                Text(
-                    "${stringResource(R.string.spent)}: ${vm.money(row.expense)}",
-                    color = ExpenseRed,
-                    style = MaterialTheme.typography.bodySmall
-                )
-                Text(
-                    "${stringResource(R.string.net)}: ${vm.signed(row.income - row.expense)}",
-                    fontWeight = FontWeight.Bold,
-                    color = Ink
-                )
-            }
+            Text(
+                "${categoryLabel(movement.category)} · ${vm.signed(if (movement.isExpense()) -movement.amount else movement.amount)}",
+                style = MaterialTheme.typography.bodySmall
+            )
         }
+        if (movement.imagePath.isNotBlank() && File(movement.imagePath).exists()) {
+            TextButton(onClick = onView) { Text(stringResource(R.string.view_ticket)) }
+        }
+        TextButton(onClick = onEdit) { Text(stringResource(R.string.edit)) }
     }
 }
 
@@ -260,6 +324,7 @@ fun AddScreen(vm: ReciboViewModel) {
     var error by remember { mutableStateOf<String?>(null) }
     var reading by remember { mutableStateOf(false) }
     var review by remember { mutableStateOf<ParsedReceipt?>(null) }
+    var reviewImage by remember { mutableStateOf<Uri?>(null) }
     var photoUri by remember { mutableStateOf<Uri?>(null) }
     val invalid = stringResource(R.string.invalid_amount)
     val failed = stringResource(R.string.ocr_failed)
@@ -268,6 +333,7 @@ fun AddScreen(vm: ReciboViewModel) {
         if (uri != null) {
             scope.launch {
                 reading = true
+                reviewImage = uri
                 review = readReceipt(context, uri) ?: ParsedReceipt(null, null, false, null, "other", "")
                 if (review?.raw.isNullOrBlank()) error = failed
                 reading = false
@@ -279,6 +345,7 @@ fun AddScreen(vm: ReciboViewModel) {
         if (ok && uri != null) {
             scope.launch {
                 reading = true
+                reviewImage = uri
                 review = readReceipt(context, uri) ?: ParsedReceipt(null, null, false, null, "other", "")
                 if (review?.raw.isNullOrBlank()) error = failed
                 reading = false
@@ -404,11 +471,15 @@ fun AddScreen(vm: ReciboViewModel) {
     review?.let { parsed ->
         ReceiptEditor(
             parsed = parsed,
-            currency = vm.currency,
-            onDismiss = { review = null },
+            imageUri = reviewImage,
+            onDismiss = {
+                review = null
+                reviewImage = null
+            },
             onSave = { movement ->
                 vm.add(movement)
                 review = null
+                reviewImage = null
             }
         )
     }
@@ -417,10 +488,11 @@ fun AddScreen(vm: ReciboViewModel) {
 @Composable
 private fun ReceiptEditor(
     parsed: ParsedReceipt,
-    currency: String,
+    imageUri: Uri?,
     onDismiss: () -> Unit,
     onSave: (Movement) -> Unit
 ) {
+    val context = LocalContext.current
     var amount by remember { mutableStateOf(parsed.amount?.toString().orEmpty()) }
     var merchant by remember { mutableStateOf(parsed.merchant.orEmpty()) }
     var category by remember { mutableStateOf(parsed.category) }
@@ -432,6 +504,7 @@ private fun ReceiptEditor(
         title = { Text(stringResource(R.string.edit_receipt)) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
+                imageUri?.let { TicketPreview(it.toString(), fromUri = true) }
                 Text(
                     if (parsed.merchantDetected) stringResource(R.string.merchant_found)
                     else stringResource(R.string.merchant_missing),
@@ -448,12 +521,7 @@ private fun ReceiptEditor(
                     value = merchant,
                     onValueChange = { merchant = it },
                     label = { Text(stringResource(R.string.company)) },
-                    singleLine = true,
-                    modifier = Modifier.border(
-                        width = if (parsed.merchantDetected) 0.dp else 1.dp,
-                        color = if (parsed.merchantDetected) Color.Transparent else ExpenseRed,
-                        shape = RoundedCornerShape(8.dp)
-                    )
+                    singleLine = true
                 )
                 Text(stringResource(R.string.category))
                 CategoryChips(Categories.expenses, category) { category = it }
@@ -463,9 +531,6 @@ private fun ReceiptEditor(
                     TextButton(onClick = { date = date.plusDays(1) }) { Text("+") }
                 }
                 error?.let { Text(it, color = ExpenseRed) }
-                if (currency.isNotEmpty()) {
-                    Spacer(Modifier.height(4.dp))
-                }
             }
         },
         confirmButton = {
@@ -474,16 +539,19 @@ private fun ReceiptEditor(
                 if (value == null || value <= 0.0) {
                     error = invalid
                 } else {
+                    val id = UUID.randomUUID().toString()
+                    val path = imageUri?.let { copyReceiptImage(context, it, id) }.orEmpty()
                     onSave(
                         Movement(
-                            id = UUID.randomUUID().toString(),
+                            id = id,
                             epochDay = date.toEpochDay(),
                             type = Movement.TYPE_EXPENSE,
                             amount = value,
                             category = category,
                             merchant = merchant.trim(),
                             note = "",
-                            source = Movement.SOURCE_PHOTO
+                            source = Movement.SOURCE_PHOTO,
+                            imagePath = path
                         )
                     )
                 }
@@ -492,6 +560,112 @@ private fun ReceiptEditor(
         dismissButton = {
             TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
         }
+    )
+}
+
+@Composable
+private fun EditMovementDialog(
+    movement: Movement,
+    onDismiss: () -> Unit,
+    onSave: (Movement) -> Unit,
+    onDelete: () -> Unit
+) {
+    var amount by remember { mutableStateOf(movement.amount.toString()) }
+    var merchant by remember { mutableStateOf(movement.merchant) }
+    var note by remember { mutableStateOf(movement.note) }
+    var category by remember { mutableStateOf(movement.category) }
+    var date by remember { mutableStateOf(LocalDate.ofEpochDay(movement.epochDay)) }
+    var isExpense by remember { mutableStateOf(movement.isExpense()) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var confirmDelete by remember { mutableStateOf(false) }
+    var viewing by remember { mutableStateOf(false) }
+    val invalid = stringResource(R.string.invalid_amount)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.edit)) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                if (movement.imagePath.isNotBlank() && File(movement.imagePath).exists()) {
+                    TicketPreview(movement.imagePath, fromUri = false)
+                    TextButton(onClick = { viewing = true }) { Text(stringResource(R.string.view_ticket)) }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(selected = isExpense, onClick = { isExpense = true }, label = { Text(stringResource(R.string.expense)) })
+                    FilterChip(selected = !isExpense, onClick = { isExpense = false }, label = { Text(stringResource(R.string.income)) })
+                }
+                OutlinedTextField(amount, { amount = it }, label = { Text(stringResource(R.string.amount)) }, singleLine = true)
+                OutlinedTextField(merchant, { merchant = it }, label = { Text(stringResource(R.string.company)) }, singleLine = true)
+                OutlinedTextField(note, { note = it }, label = { Text(stringResource(R.string.note)) })
+                CategoryChips(if (isExpense) Categories.expenses else Categories.incomes, category) { category = it }
+                Row {
+                    TextButton(onClick = { date = date.minusDays(1) }) { Text("-") }
+                    Text(date.format(DateTimeFormatter.ofPattern("dd/MM/yyyy")))
+                    TextButton(onClick = { date = date.plusDays(1) }) { Text("+") }
+                }
+                error?.let { Text(it, color = ExpenseRed) }
+                TextButton(onClick = { confirmDelete = true }) { Text(stringResource(R.string.delete)) }
+            }
+        },
+        confirmButton = {
+            Button(onClick = {
+                val value = amount.replace(',', '.').toDoubleOrNull()
+                if (value == null || value <= 0.0) error = invalid
+                else onSave(
+                    movement.copy(
+                        epochDay = date.toEpochDay(),
+                        type = if (isExpense) Movement.TYPE_EXPENSE else Movement.TYPE_INCOME,
+                        amount = value,
+                        category = category,
+                        merchant = merchant.trim(),
+                        note = note.trim()
+                    )
+                )
+            }) { Text(stringResource(R.string.save)) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } }
+    )
+    if (confirmDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            title = { Text(stringResource(R.string.delete)) },
+            text = { Text(stringResource(R.string.delete_confirm)) },
+            confirmButton = { Button(onClick = onDelete) { Text(stringResource(R.string.delete)) } },
+            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text(stringResource(R.string.cancel)) } }
+        )
+    }
+    if (viewing) TicketDialog(movement.imagePath) { viewing = false }
+}
+
+@Composable
+private fun TicketPreview(source: String, fromUri: Boolean, imageHeight: androidx.compose.ui.unit.Dp = 160.dp) {
+    val context = LocalContext.current
+    val bitmap = remember(source) {
+        runCatching {
+            val raw = if (fromUri) {
+                context.contentResolver.openInputStream(Uri.parse(source))?.use { BitmapFactory.decodeStream(it) }
+            } else {
+                BitmapFactory.decodeFile(source)
+            }
+            raw?.asImageBitmap()
+        }.getOrNull()
+    }
+    if (bitmap != null) {
+        Image(
+            bitmap = bitmap,
+            contentDescription = stringResource(R.string.view_ticket),
+            modifier = Modifier.fillMaxWidth().height(imageHeight),
+            contentScale = ContentScale.Fit
+        )
+    }
+}
+
+@Composable
+private fun TicketDialog(path: String, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.view_ticket)) },
+        text = { TicketPreview(path, fromUri = false, imageHeight = 360.dp) },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } }
     )
 }
 
@@ -665,6 +839,15 @@ private fun newReceiptUri(context: android.content.Context): Uri {
     val dir = File(context.cacheDir, "receipts").apply { mkdirs() }
     val file = File(dir, "receipt_${System.currentTimeMillis()}.jpg")
     return FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+}
+
+private fun copyReceiptImage(context: android.content.Context, uri: Uri, id: String): String {
+    val dir = File(context.filesDir, "receipts").apply { mkdirs() }
+    val dest = File(dir, "$id.jpg")
+    context.contentResolver.openInputStream(uri)?.use { input ->
+        dest.outputStream().use { output -> input.copyTo(output) }
+    }
+    return dest.absolutePath
 }
 
 private suspend fun readReceipt(context: android.content.Context, uri: Uri): ParsedReceipt? {
