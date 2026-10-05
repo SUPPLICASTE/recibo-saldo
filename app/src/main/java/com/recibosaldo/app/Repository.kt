@@ -14,7 +14,8 @@ data class Movement(
     val category: String,
     val merchant: String,
     val note: String,
-    val source: String
+    val source: String,
+    val imagePath: String = ""
 ) {
     fun isExpense() = type == TYPE_EXPENSE
 
@@ -79,7 +80,8 @@ class Repository(context: Context) {
                             category = o.getString("category"),
                             merchant = o.optString("merchant"),
                             note = o.optString("note"),
-                            source = o.optString("source", Movement.SOURCE_MANUAL)
+                            source = o.optString("source", Movement.SOURCE_MANUAL),
+                            imagePath = o.optString("imagePath")
                         )
                     )
                 }
@@ -100,6 +102,7 @@ class Repository(context: Context) {
                     .put("merchant", m.merchant)
                     .put("note", m.note)
                     .put("source", m.source)
+                    .put("imagePath", m.imagePath)
             )
         }
         file.writeText(array.toString())
@@ -107,6 +110,7 @@ class Repository(context: Context) {
 
     fun clear() {
         file.delete()
+        File(file.parentFile, "receipts").deleteRecursively()
         prefs.edit().clear().apply()
     }
 
