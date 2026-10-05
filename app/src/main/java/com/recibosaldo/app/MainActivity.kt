@@ -14,6 +14,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.core.os.LocaleListCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
+import java.io.File
 import java.text.NumberFormat
 import java.time.LocalDate
 import java.util.Locale
@@ -77,6 +78,23 @@ class ReciboViewModel(app: Application) : AndroidViewModel(app) {
     fun add(movement: Movement) {
         items = items + movement
         repo.saveAll(items)
+    }
+
+    fun update(movement: Movement) {
+        items = items.map { if (it.id == movement.id) movement else it }
+        repo.saveAll(items)
+    }
+
+    fun delete(id: String) {
+        items.firstOrNull { it.id == id }?.imagePath?.let { path ->
+            if (path.isNotBlank()) File(path).delete()
+        }
+        items = items.filterNot { it.id == id }
+        repo.saveAll(items)
+    }
+
+    fun movementsOn(day: java.time.LocalDate): List<Movement> {
+        return items.filter { it.epochDay == day.toEpochDay() }
     }
 
     fun clear() {
