@@ -27,14 +27,14 @@
     <string name="cancel">Cancel</string>
     <string name="type">Type</string>
     <string name="invalid_amount">Enter an amount greater than zero.</string>
-    <string name="reading_receipt">Reading receipt…</string>
+    <string name="reading_receipt">Reading receipt.</string>
     <string name="merchant_missing">The store was not detected. You can type it before saving.</string>
     <string name="merchant_found">Store detected. You can edit any field.</string>
     <string name="edit_receipt">Review receipt</string>
     <string name="ocr_failed">Could not read the photo. You can still fill the receipt by hand.</string>
     <string name="camera_denied">Camera permission is needed to photograph a receipt.</string>
     <string name="setup_title">Starting balance</string>
-    <string name="setup_body">No account is required. Everything stays on this phone. Enter the money you have now.</string>
+    <string name="setup_body">No account is required. Everything stays on this phone.</string>
     <string name="continue_btn">Continue</string>
     <string name="language">Language</string>
     <string name="spanish">Spanish</string>
@@ -62,4 +62,9 @@
     <string name="cat_other_income">Other income</string>
     <string name="welcome_hint">Photograph a receipt or add income and expenses by hand.</string>
     <string name="no_company">No company</string>
+    <string name="edit">Edit</string>
+    <string name="view_ticket">View receipt</string>
+    <string name="delete">Delete</string>
+    <string name="delete_confirm">Delete this entry. The balance will be updated.</string>
+    <string name="tap_day">Tap a day to see and edit its entries.</string>
 </resources>
