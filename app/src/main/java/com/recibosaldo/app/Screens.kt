@@ -40,6 +40,8 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -51,6 +53,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -77,7 +80,9 @@ import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import java.io.File
+import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.util.UUID
 
@@ -408,16 +413,7 @@ fun AddScreen(vm: ReciboViewModel) {
             selected = category,
             onSelect = { category = it }
         )
-        Text(
-            "${stringResource(R.string.date)}: ${date.format(DateTimeFormatter.ofPattern("dd/MM/yyyy"))}",
-            modifier = Modifier.padding(vertical = 8.dp),
-            color = Ink
-        )
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = { date = date.minusDays(1) }) { Text("-") }
-            OutlinedButton(onClick = { date = LocalDate.now() }) { Text(stringResource(R.string.date)) }
-            OutlinedButton(onClick = { date = date.plusDays(1) }) { Text("+") }
-        }
+        DateButton(date) { date = it }
         error?.let { Text(it, color = ExpenseRed, modifier = Modifier.padding(top = 8.dp)) }
         if (reading) Text(stringResource(R.string.reading_receipt), modifier = Modifier.padding(top = 8.dp))
         Spacer(Modifier.height(12.dp))
@@ -525,11 +521,7 @@ private fun ReceiptEditor(
                 )
                 Text(stringResource(R.string.category))
                 CategoryChips(Categories.expenses, category) { category = it }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(onClick = { date = date.minusDays(1) }) { Text("-") }
-                    Text(date.format(DateTimeFormatter.ofPattern("dd/MM/yyyy")))
-                    TextButton(onClick = { date = date.plusDays(1) }) { Text("+") }
-                }
+                DateButton(date) { date = it }
                 error?.let { Text(it, color = ExpenseRed) }
             }
         },
@@ -597,11 +589,7 @@ private fun EditMovementDialog(
                 OutlinedTextField(merchant, { merchant = it }, label = { Text(stringResource(R.string.company)) }, singleLine = true)
                 OutlinedTextField(note, { note = it }, label = { Text(stringResource(R.string.note)) })
                 CategoryChips(if (isExpense) Categories.expenses else Categories.incomes, category) { category = it }
-                Row {
-                    TextButton(onClick = { date = date.minusDays(1) }) { Text("-") }
-                    Text(date.format(DateTimeFormatter.ofPattern("dd/MM/yyyy")))
-                    TextButton(onClick = { date = date.plusDays(1) }) { Text("+") }
-                }
+                DateButton(date) { date = it }
                 error?.let { Text(it, color = ExpenseRed) }
                 TextButton(onClick = { confirmDelete = true }) { Text(stringResource(R.string.delete)) }
             }
@@ -634,6 +622,38 @@ private fun EditMovementDialog(
         )
     }
     if (viewing) TicketDialog(movement.imagePath) { viewing = false }
+}
+
+@Composable
+private fun DateButton(date: LocalDate, onDate: (LocalDate) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    val year = LocalDate.now().year
+    OutlinedButton(onClick = { open = true }, modifier = Modifier.fillMaxWidth()) {
+        Text("${stringResource(R.string.date)}: ${date.format(DateTimeFormatter.ofPattern("dd/MM/yyyy"))}")
+    }
+    if (open) {
+        val state = rememberDatePickerState(
+            initialSelectedDateMillis = date.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli(),
+            yearRange = year..year
+        )
+        DatePickerDialog(
+            onDismissRequest = { open = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    state.selectedDateMillis?.let { millis ->
+                        val picked = Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate()
+                        if (picked.year == year) onDate(picked)
+                    }
+                    open = false
+                }) { Text(stringResource(R.string.save)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { open = false }) { Text(stringResource(R.string.cancel)) }
+            }
+        ) {
+            DatePicker(state = state)
+        }
+    }
 }
 
 @Composable
