@@ -11,19 +11,31 @@ android {
         applicationId = "com.recibosaldo.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 3
-        versionName = "1.2.0"
+        versionCode = 4
+        versionName = "1.3.0"
         vectorDrawables.useSupportLibrary = true
     }
 
+    signingConfigs {
+        create("stable") {
+            storeFile = file("recibo-saldo.keystore")
+            storePassword = "recibosaldo"
+            keyAlias = "recibosaldo"
+            keyPassword = "recibosaldo"
+        }
+    }
+
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("stable")
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("stable")
         }
     }
 
