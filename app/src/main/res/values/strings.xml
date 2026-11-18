@@ -67,4 +67,28 @@
     <string name="delete">Delete</string>
     <string name="delete_confirm">Delete this entry. The balance will be updated.</string>
     <string name="tap_day">Tap a day to see and edit its entries.</string>
+    <string name="search">Search store, amount or note</string>
+    <string name="all_months">All months</string>
+    <string name="month_spent">Spent this month: %1$s of %2$s</string>
+    <string name="budget">Monthly budget (0 = none)</string>
+    <string name="budget_none">Set a monthly budget in Settings to track it here.</string>
+    <string name="backup_title">Backup</string>
+    <string name="backup_note">Saves balance, movements and repeated expenses. Receipt photos are not included.</string>
+    <string name="backup_export">Save a copy</string>
+    <string name="backup_import">Restore a copy</string>
+    <string name="backup_import_confirm">Restoring replaces the data currently on this phone. Continue?</string>
+    <string name="backup_ok">Done</string>
+    <string name="backup_error">Could not save or read the copy</string>
+    <string name="recurring_title">Repeated expenses</string>
+    <string name="recurring_none">None yet. Add one below.</string>
+    <string name="recurring_day">Day of month (1-28)</string>
+    <string name="recurring_day_short">day %1$d</string>
+    <string name="recurring_add">Add repeated expense</string>
+    <string name="recurring_added">Repeated expense added</string>
+    <string name="recurring_invalid">Enter a company, an amount and a day between 1 and 28.</string>
+    <string name="recurring_note">Added automatically</string>
+    <string name="rotate_photo">Rotate photo</string>
+    <string name="crop_photo">Crop photo</string>
+    <string name="reread">Read photo again</string>
+    <string name="detected_dates">Dates found on the receipt</string>
 </resources>

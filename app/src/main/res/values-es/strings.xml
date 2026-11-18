@@ -67,4 +67,28 @@
     <string name="delete">Borrar</string>
     <string name="delete_confirm">Borrar este apunte. El saldo se actualizara.</string>
     <string name="tap_day">Pulsa un dia para ver y editar sus facturas.</string>
+    <string name="search">Buscar tienda, importe o nota</string>
+    <string name="all_months">Todos los meses</string>
+    <string name="month_spent">Gastado este mes: %1$s de %2$s</string>
+    <string name="budget">Presupuesto mensual (0 = ninguno)</string>
+    <string name="budget_none">Pon un presupuesto mensual en Ajustes para verlo aqui.</string>
+    <string name="backup_title">Copia de seguridad</string>
+    <string name="backup_note">Guarda saldo, movimientos y gastos repetidos. Las fotos de los tickets no se incluyen.</string>
+    <string name="backup_export">Guardar una copia</string>
+    <string name="backup_import">Recuperar una copia</string>
+    <string name="backup_import_confirm">Recuperar sustituye los datos que hay ahora en este telefono. Continuar?</string>
+    <string name="backup_ok">Hecho</string>
+    <string name="backup_error">No se pudo guardar o leer la copia</string>
+    <string name="recurring_title">Gastos que se repiten</string>
+    <string name="recurring_none">Todavia no hay ninguno. Anade uno abajo.</string>
+    <string name="recurring_day">Dia del mes (1-28)</string>
+    <string name="recurring_day_short">dia %1$d</string>
+    <string name="recurring_add">Anadir gasto repetido</string>
+    <string name="recurring_added">Gasto repetido anadido</string>
+    <string name="recurring_invalid">Escribe empresa, importe y un dia entre 1 y 28.</string>
+    <string name="recurring_note">Anadido automaticamente</string>
+    <string name="rotate_photo">Girar foto</string>
+    <string name="crop_photo">Recortar foto</string>
+    <string name="reread">Leer la foto de nuevo</string>
+    <string name="detected_dates">Fechas encontradas en el ticket</string>
 </resources>

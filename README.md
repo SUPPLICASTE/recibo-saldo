@@ -13,4 +13,23 @@ También está en inglés. La app usa el idioma del teléfono y se puede cambiar
 - Apuntes manuales de ingreso y gasto, con empresa.
 - En Inicio, tabla desplazable con la columna DÍA y la columna TOTAL (recibido, gastado y total del día).
 - Diagrama de categorías con el gasto ordenado de mayor a menor.
+- Búsqueda por tienda, importe o nota y filtro por meses en Inicio.
+- Presupuesto mensual con indicador de gasto en Inicio.
+- Gastos que se repiten cada mes (por ejemplo, alquiler o suscripción).
+- Copia de seguridad: guardar y recuperar saldo, movimientos y gastos repetidos. Las fotos de los tickets no se incluyen en la copia.
+- Revisión de tickets con opciones de girar, recortar y volver a leer la foto, y elegir entre las fechas detectadas.
 - Español e inglés.
+
+## Compilar
+
+El workflow de GitHub (`Build APK`) necesita dos secretos configures en el repositorio:
+
+- `RECIBO_STORE_PASSWORD`
+- `RECIBO_KEY_PASSWORD`
+
+Para compilar en local, define esas mismas variables como variables de entorno, o añade estas líneas a `local.properties` (archivo ignorado por Git):
+
+```text
+recibo.storePassword=...
+recibo.keyPassword=...
+```

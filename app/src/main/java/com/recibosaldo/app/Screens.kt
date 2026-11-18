@@ -4,8 +4,11 @@ package com.recibosaldo.app
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Matrix
 import android.net.Uri
+import android.widget.Toast
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -14,6 +17,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -45,6 +49,7 @@ import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -185,7 +190,16 @@ private fun SetupDialog(vm: ReciboViewModel) {
 
 @Composable
 fun HomeScreen(vm: ReciboViewModel) {
-    val days = vm.dayRows()
+    var query by remember { mutableStateOf("") }
+    var month by remember { mutableStateOf<Long?>(null) }
+    val months = remember(vm.items) {
+        vm.items
+            .map { ReciboViewModel.monthKey(LocalDate.ofEpochDay(it.epochDay)) }
+            .distinct()
+            .sortedDescending()
+            .take(12)
+    }
+    val days = vm.filteredDayRows(query, month)
     Column(Modifier.fillMaxSize().padding(16.dp)) {
         Card(
             colors = CardDefaults.cardColors(containerColor = Green),
@@ -201,9 +215,53 @@ fun HomeScreen(vm: ReciboViewModel) {
                     fontWeight = FontWeight.Bold
                 )
                 Text(stringResource(R.string.welcome_hint), color = Color.White.copy(alpha = 0.85f))
+                Spacer(Modifier.height(10.dp))
+                if (vm.budget > 0.0) {
+                    val spent = vm.monthExpense()
+                    Text(
+                        stringResource(R.string.month_spent, vm.money(spent), vm.money(vm.budget)),
+                        color = Color.White,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    LinearProgressIndicator(
+                        progress = { (spent / vm.budget).toFloat().coerceIn(0f, 1f) },
+                        modifier = Modifier.fillMaxWidth(),
+                        color = Color.White,
+                        trackColor = Color.White.copy(alpha = 0.35f)
+                    )
+                } else {
+                    Text(stringResource(R.string.budget_none), color = Color.White.copy(alpha = 0.85f))
+                }
             }
         }
-        Spacer(Modifier.height(14.dp))
+        Spacer(Modifier.height(12.dp))
+        OutlinedTextField(
+            value = query,
+            onValueChange = { query = it },
+            label = { Text(stringResource(R.string.search)) },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true
+        )
+        Spacer(Modifier.height(8.dp))
+        Row(
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            FilterChip(
+                selected = month == null,
+                onClick = { month = null },
+                label = { Text(stringResource(R.string.all_months)) }
+            )
+            months.forEach { key ->
+                FilterChip(
+                    selected = month == key,
+                    onClick = { month = key },
+                    label = { Text(monthLabel(key)) }
+                )
+            }
+        }
+        Spacer(Modifier.height(10.dp))
         Row(
             Modifier
                 .fillMaxWidth()
@@ -220,7 +278,7 @@ fun HomeScreen(vm: ReciboViewModel) {
             Text(stringResource(R.string.tap_day), color = Ink, modifier = Modifier.padding(bottom = 8.dp))
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(days, key = { it.day.toString() }) { row ->
-                    DayRow(row, vm)
+                    DayRow(row, vm, query, month)
                 }
             }
         }
@@ -228,11 +286,11 @@ fun HomeScreen(vm: ReciboViewModel) {
 }
 
 @Composable
-private fun DayRow(row: DayRow, vm: ReciboViewModel) {
+private fun DayRow(row: DayRow, vm: ReciboViewModel, query: String, month: Long?) {
     var open by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<Movement?>(null) }
     var viewing by remember { mutableStateOf<String?>(null) }
-    val movements = vm.movementsOn(row.day)
+    val movements = vm.movementsOn(row.day, query, month)
     Card(colors = CardDefaults.cardColors(containerColor = CardBg), shape = RoundedCornerShape(14.dp)) {
         Column(Modifier.clickable { open = !open }.padding(14.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -489,18 +547,50 @@ private fun ReceiptEditor(
     onSave: (Movement) -> Unit
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var amount by remember { mutableStateOf(parsed.amount?.toString().orEmpty()) }
     var merchant by remember { mutableStateOf(parsed.merchant.orEmpty()) }
     var category by remember { mutableStateOf(parsed.category) }
     var date by remember { mutableStateOf(parsed.date ?: LocalDate.now()) }
     var error by remember { mutableStateOf<String?>(null) }
+    var rotation by remember { mutableStateOf(0) }
+    var crop by remember { mutableStateOf(1f) }
     val invalid = stringResource(R.string.invalid_amount)
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.edit_receipt)) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
-                imageUri?.let { TicketPreview(it.toString(), fromUri = true) }
+                imageUri?.let { uri ->
+                    TicketPreview(uri.toString(), fromUri = true, rotation = rotation, crop = crop)
+                    Spacer(Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = { rotation = (rotation + 90) % 360 }) {
+                            Text(stringResource(R.string.rotate_photo))
+                        }
+                        OutlinedButton(onClick = { crop = if (crop > 0.6f) 0.6f else 1f }) {
+                            Text(stringResource(R.string.crop_photo))
+                        }
+                    }
+                    OutlinedButton(onClick = {
+                        scope.launch {
+                            val file = processedReceiptFile(
+                                context, uri, rotation, crop, "read_${System.currentTimeMillis()}"
+                            )
+                            if (file != null) {
+                                val fileUri = FileProvider.getUriForFile(
+                                    context, "${context.packageName}.fileprovider", file
+                                )
+                                readReceipt(context, fileUri)?.let { again ->
+                                    again.amount?.let { amount = it.toString() }
+                                    again.merchant?.let { if (it.isNotBlank()) merchant = it }
+                                    again.date?.let { date = it }
+                                    category = again.category
+                                }
+                            }
+                        }
+                    }) { Text(stringResource(R.string.reread)) }
+                }
                 Text(
                     if (parsed.merchantDetected) stringResource(R.string.merchant_found)
                     else stringResource(R.string.merchant_missing),
@@ -521,6 +611,21 @@ private fun ReceiptEditor(
                 )
                 Text(stringResource(R.string.category))
                 CategoryChips(Categories.expenses, category) { category = it }
+                if (parsed.dates.isNotEmpty()) {
+                    Text(stringResource(R.string.detected_dates), color = Ink)
+                    Row(
+                        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        parsed.dates.forEach { found ->
+                            FilterChip(
+                                selected = found == date,
+                                onClick = { date = found },
+                                label = { Text(found.format(DateTimeFormatter.ofPattern("dd/MM/yyyy"))) }
+                            )
+                        }
+                    }
+                }
                 DateButton(date) { date = it }
                 error?.let { Text(it, color = ExpenseRed) }
             }
@@ -532,7 +637,9 @@ private fun ReceiptEditor(
                     error = invalid
                 } else {
                     val id = UUID.randomUUID().toString()
-                    val path = imageUri?.let { copyReceiptImage(context, it, id) }.orEmpty()
+                    val path = imageUri
+                        ?.let { processedReceiptFile(context, it, rotation, crop, id)?.absolutePath }
+                        .orEmpty()
                     onSave(
                         Movement(
                             id = id,
@@ -657,16 +764,22 @@ private fun DateButton(date: LocalDate, onDate: (LocalDate) -> Unit) {
 }
 
 @Composable
-private fun TicketPreview(source: String, fromUri: Boolean, imageHeight: androidx.compose.ui.unit.Dp = 160.dp) {
+private fun TicketPreview(
+    source: String,
+    fromUri: Boolean,
+    imageHeight: androidx.compose.ui.unit.Dp = 160.dp,
+    rotation: Int = 0,
+    crop: Float = 1f
+) {
     val context = LocalContext.current
-    val bitmap = remember(source) {
+    val bitmap = remember(source, rotation, crop) {
         runCatching {
             val raw = if (fromUri) {
                 context.contentResolver.openInputStream(Uri.parse(source))?.use { BitmapFactory.decodeStream(it) }
             } else {
                 BitmapFactory.decodeFile(source)
             }
-            raw?.asImageBitmap()
+            raw?.let { processReceiptBitmap(it, rotation, crop) }?.asImageBitmap()
         }.getOrNull()
     }
     if (bitmap != null) {
@@ -779,9 +892,48 @@ fun StatsScreen(vm: ReciboViewModel) {
 
 @Composable
 fun SettingsScreen(vm: ReciboViewModel) {
+    val context = LocalContext.current
     var balance by remember { mutableStateOf(vm.initialBalance.toString()) }
     var currency by remember { mutableStateOf(vm.currency) }
+    var budget by remember { mutableStateOf(if (vm.budget > 0.0) vm.budget.toString() else "") }
     var confirm by remember { mutableStateOf(false) }
+    var importConfirm by remember { mutableStateOf(false) }
+    var recMerchant by remember { mutableStateOf("") }
+    var recAmount by remember { mutableStateOf("") }
+    var recDay by remember { mutableStateOf("1") }
+    var recCategory by remember { mutableStateOf("bills") }
+    var recError by remember { mutableStateOf<String?>(null) }
+
+    val exportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        if (uri != null) {
+            val ok = runCatching {
+                context.contentResolver.openOutputStream(uri)?.use { stream ->
+                    stream.write(vm.exportBackup().toByteArray(Charsets.UTF_8))
+                } != null
+            }.getOrDefault(false)
+            Toast.makeText(
+                context,
+                context.getString(if (ok) R.string.backup_ok else R.string.backup_error),
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+    }
+    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) {
+            val json = runCatching {
+                context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+            }.getOrNull()
+            val ok = json?.let { vm.importBackup(it) } == true
+            Toast.makeText(
+                context,
+                context.getString(if (ok) R.string.backup_ok else R.string.backup_error),
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+    }
+
     Column(
         Modifier
             .fillMaxSize()
@@ -809,14 +961,122 @@ fun SettingsScreen(vm: ReciboViewModel) {
             label = { Text(stringResource(R.string.currency)) },
             modifier = Modifier.fillMaxWidth()
         )
+        OutlinedTextField(
+            value = budget,
+            onValueChange = { budget = it },
+            label = { Text(stringResource(R.string.budget)) },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+            modifier = Modifier.fillMaxWidth()
+        )
         Button(onClick = {
-            vm.updateSettings(balance.replace(',', '.').toDoubleOrNull() ?: 0.0, currency)
+            vm.updateSettings(
+                balance.replace(',', '.').toDoubleOrNull() ?: 0.0,
+                currency,
+                budget.replace(',', '.').toDoubleOrNull() ?: 0.0
+            )
         }, modifier = Modifier.fillMaxWidth()) {
             Text(stringResource(R.string.save_settings))
         }
+
+        Spacer(Modifier.height(4.dp))
+        Text(stringResource(R.string.backup_title), fontWeight = FontWeight.Bold, color = Ink)
+        Text(stringResource(R.string.backup_note), style = MaterialTheme.typography.bodySmall, color = Ink)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(onClick = { exportLauncher.launch("recibosaldo-backup.json") }) {
+                Text(stringResource(R.string.backup_export))
+            }
+            OutlinedButton(onClick = { importConfirm = true }) {
+                Text(stringResource(R.string.backup_import))
+            }
+        }
+
+        Spacer(Modifier.height(4.dp))
+        Text(stringResource(R.string.recurring_title), fontWeight = FontWeight.Bold, color = Ink)
+        if (vm.recurring.isEmpty()) {
+            Text(stringResource(R.string.recurring_none), style = MaterialTheme.typography.bodySmall, color = Ink)
+        } else {
+            vm.recurring.forEach { rule ->
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "${rule.merchant} · ${vm.money(rule.amount)} · ${stringResource(R.string.recurring_day_short, rule.dayOfMonth)}",
+                        modifier = Modifier.weight(1f),
+                        color = Ink
+                    )
+                    TextButton(onClick = { vm.removeRecurring(rule.id) }) {
+                        Text(stringResource(R.string.delete))
+                    }
+                }
+            }
+        }
+        OutlinedTextField(
+            value = recMerchant,
+            onValueChange = { recMerchant = it },
+            label = { Text(stringResource(R.string.company)) },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true
+        )
+        OutlinedTextField(
+            value = recAmount,
+            onValueChange = { recAmount = it },
+            label = { Text(stringResource(R.string.amount)) },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true
+        )
+        OutlinedTextField(
+            value = recDay,
+            onValueChange = { recDay = it },
+            label = { Text(stringResource(R.string.recurring_day)) },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true
+        )
+        CategoryChips(Categories.expenses, recCategory) { recCategory = it }
+        recError?.let { Text(it, color = ExpenseRed) }
+        Button(onClick = {
+            val value = recAmount.replace(',', '.').toDoubleOrNull()
+            val day = recDay.toIntOrNull()
+            if (value == null || value <= 0.0 || day == null || day !in 1..28) {
+                recError = context.getString(R.string.recurring_invalid)
+            } else {
+                vm.addRecurring(
+                    Recurring(
+                        id = UUID.randomUUID().toString(),
+                        merchant = recMerchant.trim().ifBlank { context.getString(R.string.no_company) },
+                        amount = value,
+                        category = recCategory,
+                        dayOfMonth = day
+                    )
+                )
+                recMerchant = ""
+                recAmount = ""
+                recDay = "1"
+                recError = null
+                Toast.makeText(context, R.string.recurring_added, Toast.LENGTH_SHORT).show()
+            }
+        }, modifier = Modifier.fillMaxWidth()) {
+            Text(stringResource(R.string.recurring_add))
+        }
+
         OutlinedButton(onClick = { confirm = true }, modifier = Modifier.fillMaxWidth()) {
             Text(stringResource(R.string.clear_data))
         }
+    }
+    if (importConfirm) {
+        AlertDialog(
+            onDismissRequest = { importConfirm = false },
+            title = { Text(stringResource(R.string.backup_import)) },
+            text = { Text(stringResource(R.string.backup_import_confirm)) },
+            confirmButton = {
+                Button(onClick = {
+                    importConfirm = false
+                    importLauncher.launch("application/json")
+                }) { Text(stringResource(R.string.backup_import)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { importConfirm = false }) { Text(stringResource(R.string.cancel)) }
+            }
+        )
     }
     if (confirm) {
         AlertDialog(
@@ -828,6 +1088,8 @@ fun SettingsScreen(vm: ReciboViewModel) {
                     vm.clear()
                     confirm = false
                     balance = "0.0"
+                    currency = "€"
+                    budget = ""
                 }) { Text(stringResource(R.string.save)) }
             },
             dismissButton = {
@@ -861,13 +1123,43 @@ private fun newReceiptUri(context: android.content.Context): Uri {
     return FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
 }
 
-private fun copyReceiptImage(context: android.content.Context, uri: Uri, id: String): String {
-    val dir = File(context.filesDir, "receipts").apply { mkdirs() }
-    val dest = File(dir, "$id.jpg")
-    context.contentResolver.openInputStream(uri)?.use { input ->
-        dest.outputStream().use { output -> input.copyTo(output) }
+private fun processReceiptBitmap(source: Bitmap, rotation: Int, crop: Float): Bitmap {
+    val rotated = if (rotation % 360 == 0) {
+        source
+    } else {
+        Bitmap.createBitmap(
+            source, 0, 0, source.width, source.height,
+            Matrix().apply { postRotate(rotation.toFloat()) }, true
+        )
     }
-    return dest.absolutePath
+    val scale = crop.coerceIn(0.2f, 1f)
+    val width = (rotated.width * scale).toInt().coerceAtLeast(1)
+    val height = (rotated.height * scale).toInt().coerceAtLeast(1)
+    val left = (rotated.width - width) / 2
+    val top = (rotated.height - height) / 2
+    return Bitmap.createBitmap(rotated, left, top, width, height)
+}
+
+private fun processedReceiptFile(
+    context: android.content.Context,
+    uri: Uri,
+    rotation: Int,
+    crop: Float,
+    name: String
+): File? {
+    val source = context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
+        ?: return null
+    val result = processReceiptBitmap(source, rotation, crop)
+    val dir = File(context.filesDir, "receipts").apply { mkdirs() }
+    val dest = File(dir, "$name.jpg")
+    dest.outputStream().use { out -> result.compress(Bitmap.CompressFormat.JPEG, 85, out) }
+    return dest
+}
+
+private fun monthLabel(key: Long): String {
+    val year = ((key - 1) / 12).toInt()
+    val month = (key - year * 12L).toInt()
+    return String.format("%02d/%d", month, year)
 }
 
 private suspend fun readReceipt(context: android.content.Context, uri: Uri): ParsedReceipt? {

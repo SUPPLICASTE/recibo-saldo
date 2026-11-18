@@ -16,6 +16,8 @@ jobs:
         env:
           ANDROID_HOME: /usr/local/lib/android/sdk
           ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+          RECIBO_STORE_PASSWORD: ${{ secrets.RECIBO_STORE_PASSWORD }}
+          RECIBO_KEY_PASSWORD: ${{ secrets.RECIBO_KEY_PASSWORD }}
         run: |
           chmod +x ./gradlew
           ./gradlew assembleDebug --stacktrace

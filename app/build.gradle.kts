@@ -3,6 +3,16 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+val storePass = providers.environmentVariable("RECIBO_STORE_PASSWORD")
+    .orElse(providers.gradleProperty("recibo.storePassword")).orNull
+    ?: error("Falta RECIBO_STORE_PASSWORD o recibo.storePassword en local.properties")
+val keyPass = providers.environmentVariable("RECIBO_KEY_PASSWORD")
+    .orElse(providers.gradleProperty("recibo.keyPassword")).orNull
+    ?: error("Falta RECIBO_KEY_PASSWORD o recibo.keyPassword en local.properties")
+val aliasName = providers.environmentVariable("RECIBO_KEY_ALIAS")
+    .orElse(providers.gradleProperty("recibo.keyAlias")).orNull
+    ?: "recibosaldo"
+
 android {
     namespace = "com.recibosaldo.app"
     compileSdk = 34
@@ -19,9 +29,9 @@ android {
     signingConfigs {
         create("stable") {
             storeFile = file("recibo-saldo.keystore")
-            storePassword = "recibosaldo"
-            keyAlias = "recibosaldo"
-            keyPassword = "recibosaldo"
+            storePassword = storePass
+            keyAlias = aliasName
+            keyPassword = keyPass
         }
     }
 

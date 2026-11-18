@@ -9,7 +9,8 @@ data class ParsedReceipt(
     val merchantDetected: Boolean,
     val date: LocalDate?,
     val category: String,
-    val raw: String
+    val raw: String,
+    val dates: List<LocalDate> = emptyList()
 )
 
 object ReceiptParser {
@@ -26,20 +27,21 @@ object ReceiptParser {
 
     fun parse(text: String): ParsedReceipt {
         val lines = text.lines().map { it.trim() }.filter { it.isNotEmpty() }
-        val merchant = findMerchant(text, lines)
+        val merchant = findMerchant(text)
         val amount = findAmount(lines)
-        val date = findDate(text)
+        val dates = findDates(text)
         return ParsedReceipt(
             amount = amount,
             merchant = merchant,
             merchantDetected = merchant != null,
-            date = date,
+            date = dates.firstOrNull(),
             category = guessCategory(merchant, text),
-            raw = text
+            raw = text,
+            dates = dates
         )
     }
 
-    private fun findMerchant(text: String, lines: List<String>): String? {
+    private fun findMerchant(text: String): String? {
         val folded = text.lowercase(Locale.ROOT)
         return known.firstOrNull { folded.contains(it.lowercase(Locale.ROOT)) }
     }
@@ -62,13 +64,15 @@ object ReceiptParser {
         return all.maxOrNull()
     }
 
-    private fun findDate(text: String): LocalDate? {
-        val m = Regex("""(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})""").find(text) ?: return null
-        val day = m.groupValues[1].toIntOrNull() ?: return null
-        val month = m.groupValues[2].toIntOrNull() ?: return null
-        var year = m.groupValues[3].toIntOrNull() ?: return null
-        if (year < 100) year += 2000
-        return runCatching { LocalDate.of(year, month, day) }.getOrNull()
+    private fun findDates(text: String): List<LocalDate> {
+        val pattern = Regex("""(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})""")
+        return pattern.findAll(text).mapNotNull { m ->
+            val day = m.groupValues[1].toIntOrNull() ?: return@mapNotNull null
+            val month = m.groupValues[2].toIntOrNull() ?: return@mapNotNull null
+            var year = m.groupValues[3].toIntOrNull() ?: return@mapNotNull null
+            if (year < 100) year += 2000
+            runCatching { LocalDate.of(year, month, day) }.getOrNull()
+        }.distinct().toList()
     }
 
     private fun guessCategory(merchant: String?, text: String): String {
